@@ -13,7 +13,15 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = () => {
 
   React.useEffect(() => {
     fetch('/api/leaderboard')
-      .then(res => res.json())
+      .then(async res => {
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          console.error("Failed to parse JSON. Response text:", text);
+          throw new Error("Invalid response from server");
+        }
+      })
       .then(data => {
         const mapped = data.map((p: any, i: number) => ({
           id: p.id,
