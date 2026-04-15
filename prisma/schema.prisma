@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String        @id
+  email           String?       @unique
+  fullName        String?
+  avatarUrl       String?
+  elo             Int           @default(1000)
+  totalScore      Int           @default(0)
+  matchesPlayed   Int           @default(0)
+  matchesWon      Int           @default(0)
+  cyberBits       Int           @default(0)
+  milestonesSeen  Int[]         @default([])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  matchPlayers    MatchPlayer[]
+}
+
+model Match {
+  id         String        @id @default(uuid())
+  mode       String        // score_attack, race, survival, daily
+  startedAt  DateTime      @default(now())
+  endedAt    DateTime?
+  winnerId   String?
+
+  players    MatchPlayer[]
+}
+
+model MatchPlayer {
+  id          String   @id @default(uuid())
+  matchId     String
+  userId      String
+  score       Int      @default(0)
+  highestTile Int      @default(0)
+  rank        Int      @default(0)
+  eloDelta    Int      @default(0)
+
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+}
