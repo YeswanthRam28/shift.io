@@ -1,9 +1,5 @@
 # Shift.io | Competitive Multiplayer 2048
 
-<div align="center">
-  <img width="1200" alt="Shift.io Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 ## 🚀 Overview
 
 **Shift.io** is a next-generation competitive arena for 2048 enthusiasts. Battle against multiple opponents in real-time, harness chaotic sabotages, and climb the global leaderboard to become the ultimate Cyber-Ace.
