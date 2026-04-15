@@ -11,14 +11,21 @@ import "dotenv/config";
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const pool = new pg.Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Common for Supabase/Heroku unless you provide CA cert
+let prisma: PrismaClient;
+
+function getPrisma() {
+  if (!prisma) {
+    const pool = new pg.Pool({ 
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+    const adapter = new PrismaPg(pool);
+    prisma = new PrismaClient({ adapter });
   }
-});
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+  return prisma;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -158,7 +165,7 @@ async function endGame(roomId: string) {
 
   // --- Prisma DB Update ---
   try {
-    await prisma.$transaction(async (tx) => {
+    await getPrisma().$transaction(async (tx) => {
       const match = await tx.match.create({
         data: {
           mode: room.mode,
@@ -255,7 +262,7 @@ io.on('connection', (socket) => {
     // --- Sync User to DB ---
     let dbUser;
     try {
-      dbUser = await prisma.user.upsert({
+      dbUser = await getPrisma().user.upsert({
         where: { id: userId },
         update: { fullName: name, avatarUrl: avatar },
         create: { id: userId, fullName: name, avatarUrl: avatar, elo: 1000 }
@@ -507,7 +514,7 @@ app.get('/api/me', async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Auth required' });
 
   try {
-    const user = await prisma.user.findUnique({
+    const user = await getPrisma().user.findUnique({
       where: { id: userId },
       include: {
         matchPlayers: {
@@ -527,7 +534,7 @@ app.get('/api/me', async (req, res) => {
 app.get('/api/leaderboard', async (req, res) => {
   console.log("Fetching leaderboard data...");
   try {
-    const users = await prisma.user.findMany({
+    const users = await getPrisma().user.findMany({
       orderBy: { elo: 'desc' },
       take: 50,
       select: { id: true, fullName: true, avatarUrl: true, elo: true, matchesWon: true }
