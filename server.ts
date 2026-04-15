@@ -525,15 +525,18 @@ app.get('/api/me', async (req, res) => {
 });
 
 app.get('/api/leaderboard', async (req, res) => {
+  console.log("Fetching leaderboard data...");
   try {
     const users = await prisma.user.findMany({
       orderBy: { elo: 'desc' },
       take: 50,
       select: { id: true, fullName: true, avatarUrl: true, elo: true, matchesWon: true }
     });
+    console.log(`Successfully fetched ${users.length} users.`);
     res.json(users);
-  } catch (e) {
-    res.status(500).json({ error: 'Internal error' });
+  } catch (e: any) {
+    console.error("Leaderboard fetch error:", e.message);
+    res.status(500).json({ error: 'Internal error', message: e.message });
   }
 });
 

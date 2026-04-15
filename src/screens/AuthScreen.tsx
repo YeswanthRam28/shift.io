@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { LogIn, Diamond, Gamepad2, AlertTriangle } from 'lucide-react';
 import { Button } from '../components/Button';
 import { supabase } from '../lib/supabase';
+import { Logo } from '../components/Logo';
 
 export const AuthScreen: React.FC = () => {
   const handleGoogleLogin = async () => {
@@ -38,7 +39,7 @@ export const AuthScreen: React.FC = () => {
         className="glass-panel p-10 md:p-14 rounded-[2.5rem] w-full max-w-[480px] relative z-10 flex flex-col items-center text-center overflow-hidden neon-border"
       >
         <div className="mb-10 animate-fade-in">
-          <img src="/logo.webp" alt="Shift.io Logo" className="h-16 object-contain" />
+          <Logo size={64} color="#D5FF45" />
         </div>
         
         <h2 className="text-4xl font-black font-headline uppercase tracking-tighter mb-4 leading-none">
