@@ -25,6 +25,8 @@ const __dirname = path.dirname(__filename);
 
 // -- Setup --
 const app = express();
+export { app }; 
+
 app.use(express.json());
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -555,4 +557,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
