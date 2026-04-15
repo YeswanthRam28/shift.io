@@ -1,22 +1,27 @@
 import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Board, RNG, createEmptyGrid, isGameOver, moveBoard, spawnTile } from '../src/lib/engine.js';
 import { GameMode, SabotageType } from '../src/types.js';
 import { PrismaClient } from '@prisma/client';
-import "dotenv/config";
-import pg from 'pg';
+import pkg from 'pg';
+const { Pool } = pkg;
 import { PrismaPg } from '@prisma/adapter-pg';
+
+const IS_VERCEL = !!process.env.VERCEL;
 
 let prisma: PrismaClient;
 
 function getPrisma() {
   if (!prisma) {
-    const pool = new pg.Pool({ 
-      connectionString: process.env.DATABASE_URL,
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      console.error("FATAL: DATABASE_URL is not defined in environment variables.");
+      throw new Error("Missing DATABASE_URL");
+    }
+    
+    const pool = new Pool({ 
+      connectionString: dbUrl,
       ssl: {
         rejectUnauthorized: false
       }
@@ -27,6 +32,14 @@ function getPrisma() {
   return prisma;
 }
 
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -35,10 +48,21 @@ const app = express();
 export { app }; 
 
 app.use(express.json());
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
-});
+
+let io: any = null;
+let httpServer: any = null;
+
+if (!IS_VERCEL) {
+  const { config } = await import('dotenv');
+  config();
+  
+  const { createServer } = await import('http');
+  const { Server } = await import('socket.io');
+  httpServer = createServer(app);
+  io = new Server(httpServer, {
+    cors: { origin: "*", methods: ["GET", "POST"] }
+  });
+}
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -106,14 +130,14 @@ function emitLobbyUpdate(roomId: string) {
     highestTile: p.highestTile,
     elo: p.elo
   }));
-  io.to(roomId).emit('lobby_update', playersList);
+  io?.to(roomId).emit('lobby_update', playersList);
 }
 
 function broadcastOpponentUpdate(roomId: string, socketId: string) {
   const room = rooms.get(roomId);
   const p = room?.players.get(socketId);
   if (!room || !p) return;
-  io.to(roomId).emit('opponent_update', {
+  io?.to(roomId).emit('opponent_update', {
     userId: p.socketId,
     board: p.board,
     score: p.score,
@@ -161,7 +185,7 @@ async function endGame(roomId: string) {
     };
   });
 
-  io.to(roomId).emit('match_end', { results: results.map(r => ({ ...r, userId: r.socketId })) });
+  io?.to(roomId).emit('match_end', { results: results.map(r => ({ ...r, userId: r.socketId })) });
 
   // --- Prisma DB Update ---
   try {
@@ -255,7 +279,7 @@ function applyTileBomb(board: Board): Board {
 }
 
 
-io.on('connection', (socket) => {
+io?.on('connection', (socket: any) => {
   console.log('User connected:', socket.id);
 
   socket.on('join_lobby', async ({ mode, name, avatar, userId, isPrivate, roomCode, targetTile }) => {
@@ -330,12 +354,12 @@ io.on('connection', (socket) => {
       room.status = 'countdown';
 
       let countdown = 3;
-      io.to(roomId).emit('countdown', { secondsLeft: countdown });
+      io?.to(roomId).emit('countdown', { secondsLeft: countdown });
 
       const interval = setInterval(() => {
         countdown--;
         if (countdown > 0) {
-          io.to(roomId).emit('countdown', { secondsLeft: countdown });
+          io?.to(roomId).emit('countdown', { secondsLeft: countdown });
         } else {
           clearInterval(interval);
           startMatch(roomId);
@@ -368,13 +392,13 @@ io.on('connection', (socket) => {
       room.timeout = setTimeout(() => endGame(roomId), 10 * 60 * 1000);
     }
 
-    io.to(roomId).emit('match_start', {
+    io?.to(roomId).emit('match_start', {
       roomId, mode: room.mode, seed: room.seed,
       endsAt: room.endsAt, targetTile: room.targetTile
     });
 
     for (const [sId, p] of room.players.entries()) {
-      io.sockets.sockets.get(sId)?.emit('move_result', { board: p.board, score: p.score, newTile: null, moved: true });
+      io?.sockets.sockets.get(sId)?.emit('move_result', { board: p.board, score: p.score, newTile: null, moved: true });
       broadcastOpponentUpdate(roomId, sId);
     }
     emitLobbyUpdate(roomId);
@@ -420,7 +444,7 @@ io.on('connection', (socket) => {
         endGame(roomId);
       } else if (isGameOver(player.board)) {
         player.isEliminated = true;
-        io.to(roomId).emit('player_eliminated', { userId: socket.id });
+        io?.to(roomId).emit('player_eliminated', { userId: socket.id });
 
         if (room.mode === 'survival') {
           const activeCount = Array.from(room.players.values()).filter(p => !p.isEliminated).length;
@@ -453,8 +477,8 @@ io.on('connection', (socket) => {
     }
 
     try {
-      io.to(targetUserId).emit('sabotage_incoming', { sabotageType, fromUserId: socket.id });
-      io.to(roomId).emit('arena_log', {
+      io?.to(targetUserId).emit('sabotage_incoming', { sabotageType, fromUserId: socket.id });
+      io?.to(roomId).emit('arena_log', {
         from: attacker.name,
         target: target.name,
         type: sabotageType,
@@ -463,16 +487,16 @@ io.on('connection', (socket) => {
 
       if (sabotageType === 'freeze') {
         const duration = 3000;
-        io.to(targetUserId).emit('freeze_start', { duration });
+        io?.to(targetUserId).emit('freeze_start', { duration });
       } else if (sabotageType === 'blind') {
         const duration = 5000;
-        io.to(targetUserId).emit('blind_start', { duration });
+        io?.to(targetUserId).emit('blind_start', { duration });
       } else {
         if (sabotageType === 'junk_row') target.board = applyJunkRow(target.board);
         else if (sabotageType === 'board_shuffle') target.board = applyBoardShuffle(target.board);
         else if (sabotageType === 'tile_bomb') target.board = applyTileBomb(target.board);
 
-        io.to(targetUserId).emit('board_mutated', { board: target.board });
+        io?.to(targetUserId).emit('board_mutated', { board: target.board });
         broadcastOpponentUpdate(roomId, targetUserId);
       }
     } catch (e) { console.error(e); }
@@ -549,6 +573,7 @@ app.get('/api/leaderboard', async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -562,9 +587,11 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (httpServer) {
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
